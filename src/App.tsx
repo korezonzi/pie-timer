@@ -4,8 +4,9 @@ import { Controls } from "./components/Controls";
 import { Settings } from "./components/Settings";
 import { useTimerStore } from "./stores/timerStore";
 import { onTimerTick, onTimerCompleted } from "./lib/tauri-bridge";
-import { playTick, playBell, playStart, playPause } from "./lib/sound";
+import { playTick, playBell, playStart, playPause, unlockAudio } from "./lib/sound";
 import { recordSessionComplete } from "./lib/stats";
+import { checkDailyReset } from "./lib/dailyReset";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   isRegistered,
@@ -41,6 +42,28 @@ export default function App() {
   useEffect(() => {
     syncState();
   }, [syncState]);
+
+  // Unlock the audio context on the first user gesture (Web Audio autoplay
+  // policy). Keeping the listeners attached re-resumes after focus-loss suspends.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  // Reset session progress at 4 AM (28:00) so each day starts fresh.
+  useEffect(() => {
+    const CHECK_INTERVAL_MS = 60 * 1000;
+    checkDailyReset(reset);
+    const id = setInterval(() => {
+      checkDailyReset(reset);
+    }, CHECK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [reset]);
 
   // Listen for tick events from Rust — play countdown sounds
   const prevRemainingRef = useRef<number | null>(null);

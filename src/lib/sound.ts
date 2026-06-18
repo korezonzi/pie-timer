@@ -4,7 +4,20 @@ function getAudioContext(): AudioContext {
   if (!audioCtx) {
     audioCtx = new AudioContext();
   }
+  // Browsers / WKWebView start the context suspended (autoplay policy) and
+  // re-suspend it when the app loses focus. Resume defensively before each use
+  // so event-driven sounds (tick/bell) and background global-shortcut toggles
+  // still play.
+  if (audioCtx.state === "suspended") {
+    void audioCtx.resume();
+  }
   return audioCtx;
+}
+
+// Unlock the audio context from a real user gesture. Call this on the first
+// pointer/key interaction so later non-gesture sounds are allowed to play.
+export function unlockAudio(): void {
+  getAudioContext();
 }
 
 // Short tick sound — like a clock tick
