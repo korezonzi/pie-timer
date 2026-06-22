@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TimeTimer",
+  "productName": "Pie Timer",
   "version": "0.1.0",
   "identifier": "com.fuma.timetimer",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "TimeTimer",
+        "title": "Pie Timer",
         "width": 200,
         "height": 200,
         "minWidth": 64,

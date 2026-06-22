@@ -66,7 +66,7 @@ pub fn run() {
             let app_handle = app.handle().clone();
             TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("TimeTimer")
+                .tooltip("Pie Timer")
                 .on_menu_event(move |_app, event| {
                     let engine = app_handle.state::<TimerEngine>();
                     match event.id().as_ref() {

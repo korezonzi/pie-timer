@@ -1,12 +1,12 @@
 [package]
-name = "timetimer"
+name = "pie-timer"
 version = "0.1.0"
-description = "A visual time timer app for Mac"
+description = "A visual pie timer app for Mac"
 authors = ["fuma"]
 edition = "2021"
 
 [lib]
-name = "timetimer_lib"
+name = "pie_timer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -188,7 +188,7 @@ async function sendNotificationSafe(body: string) {
       permitted = permission === "granted";
     }
     if (permitted) {
-      sendNotification({ title: "TimeTimer", body });
+      sendNotification({ title: "Pie Timer", body });
     }
   } catch (err) {
     console.warn("Notification failed:", err);

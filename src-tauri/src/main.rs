@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    timetimer_lib::run()
+    pie_timer_lib::run()
 }
