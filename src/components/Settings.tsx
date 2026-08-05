@@ -60,131 +60,140 @@ export function Settings() {
         borderRadius: "50%",
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        padding: 20,
         color: "white",
         fontSize: 11,
         fontFamily: "system-ui, -apple-system, sans-serif",
         overflow: "hidden",
       }}
     >
-      <div style={{ fontWeight: "bold", fontSize: 12, marginBottom: 4 }}>
-        Presets
-      </div>
-
-      {DEFAULT_PRESETS.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => handlePresetSelect(p)}
-          style={{
-            ...presetButtonStyle,
-            background:
-              activePreset.id === p.id
-                ? "rgba(255,255,255,0.2)"
-                : "rgba(255,255,255,0.05)",
-          }}
-        >
-          {p.name} ({p.workDurationSec / 60}/{p.breakDurationSec / 60})
-        </button>
-      ))}
-
-      <div
-        style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 4 }}
-      >
-        <input
-          type="number"
-          placeholder="Work min"
-          value={customMinutes}
-          onChange={(e) => setCustomMinutes(e.target.value)}
-          style={inputStyle}
-        />
-        <input
-          type="number"
-          placeholder="Break"
-          value={customBreak}
-          onChange={(e) => setCustomBreak(e.target.value)}
-          style={inputStyle}
-        />
-        <button onClick={handleCustomApply} style={smallButtonStyle}>
-          Set
+      <div style={{ flexShrink: 0, paddingTop: 22, display: "flex", justifyContent: "center" }}>
+        <button onClick={toggleSettings} style={smallButtonStyle}>
+          Close
         </button>
       </div>
 
       <div
-        style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 2 }}
+        className="settings-scroll"
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+          // Percentage padding keeps content inside the circular mask at any window size
+          padding: "6px 18% 20%",
+        }}
       >
-        <span style={{ fontSize: 10 }}>Goal:</span>
-        <input
-          type="number"
-          value={goalInput}
-          onChange={(e) => setGoalInput(e.target.value)}
-          style={{ ...inputStyle, width: 36 }}
-        />
-        <button onClick={handleGoalApply} style={smallButtonStyle}>
-          Set
-        </button>
-      </div>
-
-      <div
-        style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 2 }}
-      >
-        <span style={{ fontSize: 10 }}>Auto-start:</span>
-        <button
-          onClick={async () => {
-            if (autoStart) {
-              await disable();
-              setAutoStart(false);
-            } else {
-              await enable();
-              setAutoStart(true);
-            }
-          }}
-          style={{
-            ...smallButtonStyle,
-            background: autoStart
-              ? "rgba(34,197,94,0.3)"
-              : "rgba(255,255,255,0.1)",
-          }}
-        >
-          {autoStart ? "ON" : "OFF"}
-        </button>
-      </div>
-
-      {/* Weekly stats mini chart */}
-      {stats.length > 0 && (
-        <div style={{ marginTop: 4, width: "80%" }}>
-          <div style={{ fontSize: 9, opacity: 0.6, marginBottom: 2, textAlign: "center" }}>
-            7-day Focus
-          </div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 24, justifyContent: "center" }}>
-            {stats.map((day) => {
-              const maxMin = Math.max(...stats.map((d) => d.focusTimeSec / 60), 1);
-              const h = Math.max(2, (day.focusTimeSec / 60 / maxMin) * 20);
-              return (
-                <div
-                  key={day.date}
-                  title={`${day.date}: ${Math.round(day.focusTimeSec / 60)}min / ${day.completedSessions} sessions`}
-                  style={{
-                    width: 8,
-                    height: h,
-                    background: "rgba(34,197,94,0.6)",
-                    borderRadius: 2,
-                  }}
-                />
-              );
-            })}
-          </div>
+        <div style={{ fontWeight: "bold", fontSize: 12, marginBottom: 4 }}>
+          Presets
         </div>
-      )}
 
-      <button
-        onClick={toggleSettings}
-        style={{ ...smallButtonStyle, marginTop: 4 }}
-      >
-        Close
-      </button>
+        {DEFAULT_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => handlePresetSelect(p)}
+            style={{
+              ...presetButtonStyle,
+              background:
+                activePreset.id === p.id
+                  ? "rgba(255,255,255,0.2)"
+                  : "rgba(255,255,255,0.05)",
+            }}
+          >
+            {p.name} ({p.workDurationSec / 60}/{p.breakDurationSec / 60})
+          </button>
+        ))}
+
+        <div
+          style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 4 }}
+        >
+          <input
+            type="number"
+            placeholder="Work min"
+            value={customMinutes}
+            onChange={(e) => setCustomMinutes(e.target.value)}
+            style={inputStyle}
+          />
+          <input
+            type="number"
+            placeholder="Break"
+            value={customBreak}
+            onChange={(e) => setCustomBreak(e.target.value)}
+            style={inputStyle}
+          />
+          <button onClick={handleCustomApply} style={smallButtonStyle}>
+            Set
+          </button>
+        </div>
+
+        <div
+          style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 2 }}
+        >
+          <span style={{ fontSize: 10 }}>Goal:</span>
+          <input
+            type="number"
+            value={goalInput}
+            onChange={(e) => setGoalInput(e.target.value)}
+            style={{ ...inputStyle, width: 36 }}
+          />
+          <button onClick={handleGoalApply} style={smallButtonStyle}>
+            Set
+          </button>
+        </div>
+
+        <div
+          style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 2 }}
+        >
+          <span style={{ fontSize: 10 }}>Auto-start:</span>
+          <button
+            onClick={async () => {
+              if (autoStart) {
+                await disable();
+                setAutoStart(false);
+              } else {
+                await enable();
+                setAutoStart(true);
+              }
+            }}
+            style={{
+              ...smallButtonStyle,
+              background: autoStart
+                ? "rgba(34,197,94,0.3)"
+                : "rgba(255,255,255,0.1)",
+            }}
+          >
+            {autoStart ? "ON" : "OFF"}
+          </button>
+        </div>
+
+        {/* Weekly stats mini chart */}
+        {stats.length > 0 && (
+          <div style={{ marginTop: 4, width: "80%" }}>
+            <div style={{ fontSize: 9, opacity: 0.6, marginBottom: 2, textAlign: "center" }}>
+              7-day Focus
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 24, justifyContent: "center" }}>
+              {stats.map((day) => {
+                const maxMin = Math.max(...stats.map((d) => d.focusTimeSec / 60), 1);
+                const h = Math.max(2, (day.focusTimeSec / 60 / maxMin) * 20);
+                return (
+                  <div
+                    key={day.date}
+                    title={`${day.date}: ${Math.round(day.focusTimeSec / 60)}min / ${day.completedSessions} sessions`}
+                    style={{
+                      width: 8,
+                      height: h,
+                      background: "rgba(34,197,94,0.6)",
+                      borderRadius: 2,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

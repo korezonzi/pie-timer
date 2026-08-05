@@ -48,3 +48,10 @@ svg path,
 svg circle {
   transition: fill 0.3s ease, opacity 0.3s ease;
 }
+
+.settings-scroll {
+  scrollbar-width: none;
+}
+.settings-scroll::-webkit-scrollbar {
+  display: none;
+}
