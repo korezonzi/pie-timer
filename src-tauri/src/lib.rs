@@ -1,15 +1,17 @@
+mod sound;
 mod timer;
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 use timer::TimerEngine;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let engine = TimerEngine::new();
+    let sound = std::sync::Arc::new(sound::SoundPlayer::new());
+    let engine = TimerEngine::new(sound);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -26,6 +28,7 @@ pub fn run() {
             timer::skip_session,
             timer::set_preset,
             timer::set_sessions_goal,
+            sound::set_muted,
         ])
         .setup(|app| {
             // Start timer tick loop
@@ -65,68 +68,26 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             TrayIconBuilder::new()
+                .icon(tauri::image::Image::from_bytes(include_bytes!(
+                    "../icons/tray-icon.png"
+                ))?)
+                .icon_as_template(true)
                 .menu(&menu)
                 .tooltip("Pie Timer")
                 .on_menu_event(move |_app, event| {
                     let engine = app_handle.state::<TimerEngine>();
                     match event.id().as_ref() {
                         "toggle" => {
-                            let mut s = engine.state.lock().unwrap();
-                            match s.status {
-                                timer::Status::Running => {
-                                    s.status = timer::Status::Paused;
-                                }
-                                timer::Status::Paused => {
-                                    s.status = timer::Status::Running;
-                                }
-                                timer::Status::Stopped => {
-                                    let p = engine.preset.lock().unwrap();
-                                    s.phase = timer::Phase::Work;
-                                    s.total_duration_sec = p.work_duration_sec;
-                                    s.remaining_sec = p.work_duration_sec;
-                                    s.current_session_index = s.completed_sessions + 1;
-                                    s.status = timer::Status::Running;
-                                }
-                            }
+                            let state = engine.do_toggle();
+                            let _ = app_handle.emit("timer:tick", &state);
                         }
                         "reset" => {
-                            let mut s = engine.state.lock().unwrap();
-                            let p = engine.preset.lock().unwrap();
-                            s.phase = timer::Phase::Idle;
-                            s.status = timer::Status::Stopped;
-                            s.total_duration_sec = p.work_duration_sec;
-                            s.remaining_sec = p.work_duration_sec;
-                            s.completed_sessions = 0;
-                            s.current_session_index = 1;
-                            s.total_focus_time_sec = 0;
+                            let state = engine.do_reset();
+                            let _ = app_handle.emit("timer:tick", &state);
                         }
                         "skip" => {
-                            let mut s = engine.state.lock().unwrap();
-                            let p = engine.preset.lock().unwrap();
-                            let next_phase = match s.phase {
-                                timer::Phase::Work => {
-                                    s.completed_sessions += 1;
-                                    if s.completed_sessions % p.sessions_before_long_break == 0 {
-                                        timer::Phase::LongBreak
-                                    } else {
-                                        timer::Phase::Break
-                                    }
-                                }
-                                timer::Phase::Break | timer::Phase::LongBreak => timer::Phase::Work,
-                                timer::Phase::Idle => timer::Phase::Work,
-                            };
-                            let next_duration = match next_phase {
-                                timer::Phase::Work => {
-                                    s.current_session_index = s.completed_sessions + 1;
-                                    p.work_duration_sec
-                                }
-                                timer::Phase::Break => p.break_duration_sec,
-                                timer::Phase::LongBreak => p.long_break_duration_sec,
-                                timer::Phase::Idle => p.work_duration_sec,
-                            };
-                            s.phase = next_phase;
-                            s.total_duration_sec = next_duration;
-                            s.remaining_sec = next_duration;
+                            let state = engine.do_skip();
+                            let _ = app_handle.emit("timer:tick", &state);
                         }
                         "show" => {
                             if let Some(window) = _app.get_webview_window("main") {

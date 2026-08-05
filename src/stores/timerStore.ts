@@ -3,7 +3,6 @@ import { load, type Store } from "@tauri-apps/plugin-store";
 import type { TimerState, Preset } from "../types/timer";
 import { DEFAULT_PRESETS } from "../types/timer";
 import * as bridge from "../lib/tauri-bridge";
-import { playStart, playPause } from "../lib/sound";
 
 const STORE_KEY = "settings";
 
@@ -91,6 +90,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         activePreset: preset,
         muted: saved.muted,
       });
+      bridge.setMuted(saved.muted).catch(console.error);
     } else {
       set({ state: timerState });
     }
@@ -103,15 +103,6 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   toggle: async () => {
     const state = await bridge.toggleTimer();
     set({ state });
-
-    // Cue sounds here so every entry point (button, keyboard, global shortcut)
-    // sounds consistently.
-    if (get().muted) return;
-    if (state.status === "running") {
-      playStart();
-    } else if (state.status === "paused") {
-      playPause();
-    }
   },
 
   reset: async () => {
@@ -159,7 +150,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   toggleMute: () => {
     set((s) => {
       const newMuted = !s.muted;
-      // Save mute state asynchronously
+      // Save mute state asynchronously and sync it to the Rust audio engine.
       const { activePreset, state } = get();
       saveSettings({
         activePresetId: activePreset.id,
@@ -167,6 +158,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         muted: newMuted,
         sessionsGoal: state.sessionsGoal,
       });
+      bridge.setMuted(newMuted).catch(console.error);
       return { muted: newMuted };
     });
   },

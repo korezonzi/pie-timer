@@ -1,10 +1,9 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback } from "react";
 import { TimerDial } from "./components/TimerDial";
 import { Controls } from "./components/Controls";
 import { Settings } from "./components/Settings";
 import { useTimerStore } from "./stores/timerStore";
 import { onTimerTick, onTimerCompleted } from "./lib/tauri-bridge";
-import { playTick, playBell, unlockAudio } from "./lib/sound";
 import { recordSessionComplete } from "./lib/stats";
 import { checkDailyReset } from "./lib/dailyReset";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -28,18 +27,6 @@ export default function App() {
     syncState();
   }, [syncState]);
 
-  // Unlock the audio context on the first user gesture (Web Audio autoplay
-  // policy). Keeping the listeners attached re-resumes after focus-loss suspends.
-  useEffect(() => {
-    const unlock = () => unlockAudio();
-    window.addEventListener("pointerdown", unlock);
-    window.addEventListener("keydown", unlock);
-    return () => {
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
-    };
-  }, []);
-
   // Reset session progress at 4 AM (28:00) so each day starts fresh.
   useEffect(() => {
     const CHECK_INTERVAL_MS = 60 * 1000;
@@ -50,30 +37,13 @@ export default function App() {
     return () => clearInterval(id);
   }, [reset]);
 
-  // Listen for tick events from Rust — play countdown sounds
-  const prevRemainingRef = useRef<number | null>(null);
-
+  // Listen for tick events from Rust — the timer engine itself owns sound
+  // playback now (see src-tauri/src/sound.rs), so this only syncs UI state.
   useEffect(() => {
     const unlistenTick = onTimerTick((state) => {
       updateState(state);
-
-      const muted = useTimerStore.getState().muted;
-      if (!muted && state.status === "running") {
-        // Tick sound for last 5 seconds
-        if (state.remainingSec > 0 && state.remainingSec <= 5) {
-          const prev = prevRemainingRef.current;
-          if (prev === null || prev !== state.remainingSec) {
-            playTick();
-          }
-        }
-      }
-      prevRemainingRef.current = state.remainingSec;
     });
     const unlistenComplete = onTimerCompleted((phase) => {
-      const muted = useTimerStore.getState().muted;
-      if (!muted) {
-        playBell();
-      }
       const phaseLabel =
         phase === "work" ? "Focus session" : phase === "break" ? "Break" : "Long break";
       sendNotificationSafe(`${phaseLabel} complete!`);

@@ -34,6 +34,10 @@ export async function setSessionsGoal(goal: number): Promise<TimerState> {
   return invoke<TimerState>("set_sessions_goal", { goal });
 }
 
+export async function setMuted(muted: boolean): Promise<void> {
+  return invoke("set_muted", { muted });
+}
+
 export function onTimerTick(
   callback: (state: TimerState) => void,
 ): Promise<UnlistenFn> {

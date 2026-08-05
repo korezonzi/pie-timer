@@ -1,3 +1,4 @@
+use crate::sound::{SoundKind, SoundPlayer};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -76,22 +77,97 @@ impl Default for TimerState {
 pub struct TimerEngine {
     pub state: Arc<Mutex<TimerState>>,
     pub preset: Arc<Mutex<Preset>>,
+    pub sound: Arc<SoundPlayer>,
     last_tick: Arc<Mutex<Option<Instant>>>,
 }
 
 impl TimerEngine {
-    pub fn new() -> Self {
+    pub fn new(sound: Arc<SoundPlayer>) -> Self {
         Self {
             state: Arc::new(Mutex::new(TimerState::default())),
             preset: Arc::new(Mutex::new(Preset::default())),
+            sound,
             last_tick: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn do_toggle(&self) -> TimerState {
+        let mut s = self.state.lock().unwrap();
+        match s.status {
+            Status::Running => {
+                s.status = Status::Paused;
+            }
+            Status::Paused => {
+                s.status = Status::Running;
+            }
+            Status::Stopped => {
+                let p = self.preset.lock().unwrap();
+                s.phase = Phase::Work;
+                s.total_duration_sec = p.work_duration_sec;
+                s.remaining_sec = p.work_duration_sec;
+                s.current_session_index = s.completed_sessions + 1;
+                s.status = Status::Running;
+            }
+        }
+        match s.status {
+            Status::Running => self.sound.play(SoundKind::Start),
+            Status::Paused => self.sound.play(SoundKind::Pause),
+            Status::Stopped => {}
+        }
+        s.clone()
+    }
+
+    pub fn do_reset(&self) -> TimerState {
+        let mut s = self.state.lock().unwrap();
+        let p = self.preset.lock().unwrap();
+        s.phase = Phase::Idle;
+        s.status = Status::Stopped;
+        s.total_duration_sec = p.work_duration_sec;
+        s.remaining_sec = p.work_duration_sec;
+        s.completed_sessions = 0;
+        s.current_session_index = 1;
+        s.total_focus_time_sec = 0;
+        s.clone()
+    }
+
+    pub fn do_skip(&self) -> TimerState {
+        let mut s = self.state.lock().unwrap();
+        let p = self.preset.lock().unwrap();
+
+        let next_phase = match s.phase {
+            Phase::Work => {
+                s.completed_sessions += 1;
+                if s.completed_sessions % p.sessions_before_long_break == 0 {
+                    Phase::LongBreak
+                } else {
+                    Phase::Break
+                }
+            }
+            Phase::Break | Phase::LongBreak => Phase::Work,
+            Phase::Idle => Phase::Work,
+        };
+
+        let next_duration = match next_phase {
+            Phase::Work => {
+                s.current_session_index = s.completed_sessions + 1;
+                p.work_duration_sec
+            }
+            Phase::Break => p.break_duration_sec,
+            Phase::LongBreak => p.long_break_duration_sec,
+            Phase::Idle => p.work_duration_sec,
+        };
+
+        s.phase = next_phase;
+        s.total_duration_sec = next_duration;
+        s.remaining_sec = next_duration;
+        s.clone()
     }
 
     pub fn start_tick_loop(&self, app: AppHandle) {
         let state = self.state.clone();
         let preset = self.preset.clone();
         let last_tick = self.last_tick.clone();
+        let sound = self.sound.clone();
 
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_millis(100));
@@ -147,6 +223,7 @@ impl TimerEngine {
                         // Emit completion event before transitioning
                         let completed_phase = s.phase.clone();
                         let _ = app.emit("timer:completed", &completed_phase);
+                        sound.play(SoundKind::Bell);
 
                         s.phase = next_phase;
                         s.total_duration_sec = next_duration;
@@ -155,6 +232,9 @@ impl TimerEngine {
                         s.status = Status::Stopped;
                     } else {
                         s.remaining_sec -= secs_elapsed;
+                        if (1..=5).contains(&s.remaining_sec) {
+                            sound.play(SoundKind::Tick);
+                        }
                     }
 
                     let _ = app.emit("timer:tick", &*s);
@@ -194,72 +274,17 @@ pub fn pause_timer(engine: tauri::State<'_, TimerEngine>) -> TimerState {
 
 #[tauri::command]
 pub fn toggle_timer(engine: tauri::State<'_, TimerEngine>) -> TimerState {
-    let mut s = engine.state.lock().unwrap();
-    match s.status {
-        Status::Running => {
-            s.status = Status::Paused;
-        }
-        Status::Paused => {
-            s.status = Status::Running;
-        }
-        Status::Stopped => {
-            let p = engine.preset.lock().unwrap();
-            s.phase = Phase::Work;
-            s.total_duration_sec = p.work_duration_sec;
-            s.remaining_sec = p.work_duration_sec;
-            s.current_session_index = s.completed_sessions + 1;
-            s.status = Status::Running;
-        }
-    }
-    s.clone()
+    engine.do_toggle()
 }
 
 #[tauri::command]
 pub fn reset_timer(engine: tauri::State<'_, TimerEngine>) -> TimerState {
-    let mut s = engine.state.lock().unwrap();
-    let p = engine.preset.lock().unwrap();
-    s.phase = Phase::Idle;
-    s.status = Status::Stopped;
-    s.total_duration_sec = p.work_duration_sec;
-    s.remaining_sec = p.work_duration_sec;
-    s.completed_sessions = 0;
-    s.current_session_index = 1;
-    s.total_focus_time_sec = 0;
-    s.clone()
+    engine.do_reset()
 }
 
 #[tauri::command]
 pub fn skip_session(engine: tauri::State<'_, TimerEngine>) -> TimerState {
-    let mut s = engine.state.lock().unwrap();
-    let p = engine.preset.lock().unwrap();
-
-    let next_phase = match s.phase {
-        Phase::Work => {
-            s.completed_sessions += 1;
-            if s.completed_sessions % p.sessions_before_long_break == 0 {
-                Phase::LongBreak
-            } else {
-                Phase::Break
-            }
-        }
-        Phase::Break | Phase::LongBreak => Phase::Work,
-        Phase::Idle => Phase::Work,
-    };
-
-    let next_duration = match next_phase {
-        Phase::Work => {
-            s.current_session_index = s.completed_sessions + 1;
-            p.work_duration_sec
-        }
-        Phase::Break => p.break_duration_sec,
-        Phase::LongBreak => p.long_break_duration_sec,
-        Phase::Idle => p.work_duration_sec,
-    };
-
-    s.phase = next_phase;
-    s.total_duration_sec = next_duration;
-    s.remaining_sec = next_duration;
-    s.clone()
+    engine.do_skip()
 }
 
 #[tauri::command]
