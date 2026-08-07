@@ -101,11 +101,15 @@ impl TimerEngine {
                 s.status = Status::Running;
             }
             Status::Stopped => {
-                let p = self.preset.lock().unwrap();
-                s.phase = Phase::Work;
-                s.total_duration_sec = p.work_duration_sec;
-                s.remaining_sec = p.work_duration_sec;
-                s.current_session_index = s.completed_sessions + 1;
+                // Only a fresh (idle) timer starts a work session; a break that is
+                // waiting for a manual start must resume its own phase.
+                if s.phase == Phase::Idle {
+                    let p = self.preset.lock().unwrap();
+                    s.phase = Phase::Work;
+                    s.total_duration_sec = p.work_duration_sec;
+                    s.remaining_sec = p.work_duration_sec;
+                    s.current_session_index = s.completed_sessions + 1;
+                }
                 s.status = Status::Running;
             }
         }
