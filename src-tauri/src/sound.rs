@@ -6,7 +6,8 @@
 // thread; the rest of the app talks to it via an mpsc channel.
 
 use rodio::buffer::SamplesBuffer;
-use rodio::DeviceSinkBuilder;
+use rodio::cpal::traits::{DeviceTrait, HostTrait};
+use rodio::{cpal, DeviceSinkBuilder, MixerDeviceSink};
 use std::f32::consts::PI;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -40,29 +41,51 @@ impl SoundPlayer {
             let start = apply_master_gain(synth_start());
             let bell = apply_master_gain(synth_bell());
 
-            // rodio 0.22 exposes `DeviceSinkBuilder` / `MixerDeviceSink` rather than the
-            // `OutputStreamBuilder` name used in earlier drafts of this module — the
-            // crate resolved by Cargo has this API, so we target it directly.
-            match DeviceSinkBuilder::open_default_sink() {
-                Ok(sink) => {
-                    let mixer = sink.mixer();
-                    let channels = std::num::NonZero::new(1u16).unwrap();
-                    let sample_rate = std::num::NonZero::new(SAMPLE_RATE).unwrap();
-                    for kind in rx {
-                        let buf = match kind {
-                            SoundKind::Tick => &tick,
-                            SoundKind::Start => &start,
-                            SoundKind::Pause => &pause,
-                            SoundKind::Bell => &bell,
-                        };
-                        // Fire-and-forget: hand the buffer to the mixer and move on.
-                        mixer.add(SamplesBuffer::new(channels, sample_rate, buf.clone()));
-                    }
+            let channels = std::num::NonZero::new(1u16).unwrap();
+            let sample_rate = std::num::NonZero::new(SAMPLE_RATE).unwrap();
+
+            // Set by the cpal error callback when the open stream breaks (e.g. the
+            // device disappears); forces the sink to be reopened on the next sound.
+            let stream_failed = Arc::new(AtomicBool::new(false));
+            let mut current: Option<OutputSink> = None;
+
+            for kind in rx {
+                let buf = match kind {
+                    SoundKind::Tick => &tick,
+                    SoundKind::Start => &start,
+                    SoundKind::Pause => &pause,
+                    SoundKind::Bell => &bell,
+                };
+
+                let Some(device) = cpal::default_host().default_output_device() else {
+                    eprintln!("No audio output device available");
+                    drop(current.take());
+                    continue;
+                };
+                let device_id = device.id().ok();
+
+                // The sink stays bound to whichever device it was opened on, so a sink
+                // opened at startup keeps playing into the built-in speakers after the
+                // user plugs in earphones. Reopen whenever the default output device
+                // changed or the stream reported an error. An unreadable device id
+                // cannot tell devices apart, so keep the current sink in that case
+                // instead of reopening on every sound.
+                let broken = stream_failed.swap(false, Ordering::Relaxed);
+                let stale = match current.as_ref() {
+                    None => true,
+                    Some(out) => device_id.is_some() && out.device_id != device_id,
+                };
+                if broken || stale {
+                    // Release the previous device before claiming the new one.
+                    drop(current.take());
+                    current = open_sink(device, device_id, stream_failed.clone());
                 }
-                Err(e) => {
-                    eprintln!("Failed to open default audio output sink: {e}");
-                    // Drain the channel so senders never block; app keeps running silently.
-                    for _ in rx {}
+
+                if let Some(out) = &current {
+                    // Fire-and-forget: hand the buffer to the mixer and move on.
+                    out.sink
+                        .mixer()
+                        .add(SamplesBuffer::new(channels, sample_rate, buf.clone()));
                 }
             }
         });
@@ -78,6 +101,41 @@ impl SoundPlayer {
 
     pub fn set_muted(&self, muted: bool) {
         self.muted.store(muted, Ordering::Relaxed);
+    }
+}
+
+/// An open output sink together with the id of the device it was opened on, so
+/// device switches (earphones plugged in or removed) can be detected.
+struct OutputSink {
+    sink: MixerDeviceSink,
+    device_id: Option<cpal::DeviceId>,
+}
+
+fn open_sink(
+    device: cpal::Device,
+    device_id: Option<cpal::DeviceId>,
+    stream_failed: Arc<AtomicBool>,
+) -> Option<OutputSink> {
+    let builder = match DeviceSinkBuilder::from_device(device) {
+        Ok(builder) => builder,
+        Err(e) => {
+            eprintln!("Failed to configure audio output for {device_id:?}: {e}");
+            return None;
+        }
+    };
+
+    match builder
+        .with_error_callback(move |err| {
+            eprintln!("audio stream error: {err}");
+            stream_failed.store(true, Ordering::Relaxed);
+        })
+        .open_stream()
+    {
+        Ok(sink) => Some(OutputSink { sink, device_id }),
+        Err(e) => {
+            eprintln!("Failed to open audio output sink for {device_id:?}: {e}");
+            None
+        }
     }
 }
 
